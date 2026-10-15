@@ -4,7 +4,8 @@
 takes you from clicking Play to FINAL FANTASY XI's title screen without ever seeing PlayOnline. It
 hides the POL window behind a splash screen, logs in for you by calling the viewer's own UI code from
 inside pol.exe (no window focus, simulated keystrokes or clipboard, unlike autoPOL), and skips POL's
-main menu so FFXI starts straight after the login. It replaces both autoPOL and Ashita's `quicky`.
+main menu so FFXI starts straight after the login. It does everything on its own and needs no other
+POL plugin or login tool.
 
 Your login lives in your desktop keyring (GNOME Keyring, KWallet, KeePassXC...), never in a plain text
 file. Square Enix one-time passwords (2FA) are supported: typed into the splash when asked, or
@@ -33,12 +34,14 @@ FFXI install. No Square Enix data is included in this repository or the release.
    ```ini
    [ashita.polplugins]
    BegonePOL = 1
-   quicky    = 0
 
    [ashita.polplugins.args]
    BegonePOL =
    ```
-   Turn off autoPOL and any other login plugin.
+   > **Run BegonePOL as your only POL plugin.** It hasn't been tested alongside any other POL
+   > plugin, and some are known to conflict with it: `quicky` hooks the same network calls, and login
+   > tools such as autoPOL fight it over the login screen. Remove every other entry under
+   > `[ashita.polplugins]` (or set it to `0`), and don't run autoPOL or similar tools with it.
 4. Put `begonepol-helper.py` somewhere your launcher can read and make it executable. It needs
    Python 3 with PyGObject, GTK 4, libadwaita and libsecret; the Faugus flatpak already has them.
 5. Set it as the game's pre-launch command, with the row of your PlayOnline member in the member list:
@@ -123,7 +126,8 @@ fails loudly ("signatures not found") instead of poking the wrong memory; POL th
   read at the member list. No members → POL is shown with a message to add a member and log in once by
   hand; saved member row past the end of the list → POL shown with a message to fix it in setup.
 - Secrets are held scrambled or in fixed buffers and zeroed after use. Nothing secret is logged.
-- Boot ini `[ashita.polplugins]`: `BegonePOL = 1`, `quicky = 0`.
+- Boot ini `[ashita.polplugins]`: `BegonePOL = 1` and no other POL plugins (untested together; `quicky`
+  would hook the network twice).
 - `[ashita.polplugins.args]`: `BegonePOL = [options]` (empty normally)
   - `slot=<n>`: override the saved member row.
   - `show`: don't hide the POL window. `nosplash`: no splash window.
