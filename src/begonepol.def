@@ -1,0 +1,5 @@
+LIBRARY BegonePOL
+EXPORTS
+    expGetInterfaceVersion
+    expCreatePolPlugin
+    expDestroyPlugin

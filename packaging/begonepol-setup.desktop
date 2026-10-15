@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BegonePOL setup
+Comment=Change the FINAL FANTASY XI login BegonePOL keeps in your keyring
+# Edit the path. With the Faugus flatpak (which has the GTK/libsecret Python modules):
+Exec=flatpak run --command=python3 io.github.Faugus.faugus-launcher /path/to/begonepol-helper.py --setup
+Icon=dialog-password
+Categories=Game;Settings;
+Terminal=false

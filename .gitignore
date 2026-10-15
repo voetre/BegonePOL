@@ -1,0 +1,5 @@
+build-msvc/
+preview/*.exe
+preview/*.bmp
+__pycache__/
+*.lib
