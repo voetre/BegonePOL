@@ -7,7 +7,8 @@
  * PlayOnline's login screen (app.dll, pol::CLoginMemberPasswordFrame) checks the typed password
  * locally: it scrambles the text and compares it with the copy stored in the selected member's
  * data, then carries on with the login using that stored member data. This plugin does the same
- * check with the saved login (desktop keyring, handed over by begonepol-helper.py) and then calls the same continuation on
+ * check with the saved login (desktop keyring via begonepol-helper.py under Wine/Proton on Linux, Windows Credential
+ * Manager on Windows; see platform.h) and then calls the same continuation on
  * PlayOnline's UI thread. If the member is wrong it uses PlayOnline's own Back and member-select
  * handlers to pick the configured slot.
  *
@@ -17,7 +18,10 @@
  *
  * Args ([ashita.polplugins.args] BegonePOL = ...): space separated
  *   (the account, member row and one-time password mode come from the saved login, set up in
- *    begonepol-helper.py's window; slot=<n> overrides the member row)
+ *    begonepol-helper.py's window on Linux or the plugin's own window on Windows; slot=<n> overrides
+ *    the member row, or picks the saved login on Windows)
+ *   setup            Windows: open the setup window before logging in (change or forget the login)
+ *   wincred          use Windows Credential Manager even under Wine on Linux (testing)
  *   trace            log the login screen state every 2 seconds and what member-list clicks pass
  *   (by default the PlayOnline window is invisible, click-through and off the taskbar while logging in,
  *    so it's as if PlayOnline isn't there; it comes back only if the login fails or FFXI doesn't start)
@@ -42,8 +46,12 @@
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 #include "totp.h"
+#include "platform.h"
+#include "winlogin.h"
 
+#include <algorithm>
 #include <atomic>
+#include <ctime>
 #include <cstdio>
 #include <iterator>
 #include <cstring>
@@ -522,6 +530,10 @@ public:
                 m_SkipLogo = false;
             else if (tok == "prof")
                 m_Prof = true;
+            else if (tok == "setup")
+                m_OpenSetup = true;
+            else if (tok == "wincred")
+                m_WinCred = true;
             pos = end == std::string::npos ? a.size() : end + 1;
         }
     }
@@ -544,6 +556,13 @@ public:
                 g_Log->Logf(4, "BegonePOL", "Keeping PlayOnline's logo wait (FINAL FANTASY XI failed to start after a skip; delete %s to try again).", quick::g_LogoMarker);
             }
         }
+
+        m_Platform = platform::Detect();
+        if (m_Platform.kind == platform::Kind::Windows)
+            g_Log->Log(4, "BegonePOL", "Running on Windows; the login is kept in Windows Credential Manager.");
+        else
+            g_Log->Logf(4, "BegonePOL", "Running under %s (host %s, found by: %s); the login comes from %s.", platform::Name(m_Platform.kind), m_Platform.host,
+                m_Platform.why, UseKeyring() ? "the desktop keyring via begonepol-helper.py" : "Wine's Credential Manager");
 
         // Stay loaded even if the account can't be read, so a manual login still works.
         m_Loaded = ::GetTickCount();
@@ -685,13 +704,57 @@ private:
         return m_Plain[0] != 0;
     }
 
+    // Linux keeps the login in the desktop keyring (handed over by begonepol-helper.py); Windows, and
+    // Wine on other hosts, in Credential Manager. "wincred" forces Credential Manager (for testing).
+    bool UseKeyring(void) const
+    {
+        return m_Platform.kind == platform::Kind::WineLinux && !m_WinCred;
+    }
+
+    /**
+     * The login from Windows Credential Manager. The member row comes from slot=<n>, or is the only
+     * saved login; otherwise (nothing saved, several saved, or arg "setup") the setup window opens
+     * first and PlayOnline waits for it.
+     */
+    bool ReadCredentials(void)
+    {
+        auto saved = winlogin::List();
+        const winlogin::Login* use = nullptr;
+        for (const auto& l : saved)
+            if (m_Slot == 0 ? saved.size() == 1 : l.slot == m_Slot)
+                use = &l;
+        winlogin::Login fromSetup;
+        if (use == nullptr || m_OpenSetup)
+        {
+            g_Log->Log(4, "BegonePOL", "Waiting for the BegonePOL setup window to be filled in...");
+            winlogin::Setup setup;
+            const auto ok = setup.Run(saved, use != nullptr ? use->slot : m_Slot, true, fromSetup);
+            winlogin::WipeAll(saved);
+            if (!ok)
+            {
+                fromSetup.Wipe();
+                return false;
+            }
+            use = &fromSetup;
+        }
+        m_Account = use->account;
+        m_Slot    = use->slot;
+        m_Otp     = use->otp == "auto" ? Otp::Auto : use->otp == "manual" ? Otp::Manual : Otp::Off;
+        ::strncpy_s(m_Plain, use->password, _TRUNCATE);
+        ::strncpy_s(m_TotpKey, use->totp, _TRUNCATE);
+        winlogin::WipeAll(saved);
+        fromSetup.Wipe();
+        return m_Plain[0] != 0;
+    }
+
     bool LoadAccount(void)
     {
-        if (!ReadHandoff())
+        if (!(UseKeyring() ? ReadHandoff() : ReadCredentials()))
         {
             ::SecureZeroMemory(m_Plain, sizeof(m_Plain));
             ::SecureZeroMemory(m_TotpKey, sizeof(m_TotpKey));
-            g_Log->Log(2, "BegonePOL", "No saved login (is begonepol-helper.py the Faugus pre-launch command, and was setup finished?). Log in yourself this time.");
+            g_Log->Log(2, "BegonePOL", UseKeyring() ? "No saved login (is begonepol-helper.py the Faugus pre-launch command, and was setup finished?). Log in yourself this time."
+                                                    : "No saved login (the setup window was closed). Log in yourself this time.");
             return false;
         }
         if (!Scramble(m_Plain, m_Password))
@@ -713,8 +776,8 @@ private:
             m_Slot = 1;
         if (m_AskCodeTest && m_DryRun)
             m_Otp = Otp::Manual; // test the code prompt; a dry run never sends it
-        g_Log->Logf(4, "BegonePOL", "Using account '%s', member slot %d, one-time password %s (login from the keyring).", m_Account.c_str(), m_Slot,
-            m_Otp == Otp::Auto ? "entered automatically" : m_Otp == Otp::Manual ? "asked for" : "off");
+        g_Log->Logf(4, "BegonePOL", "Using account '%s', member slot %d, one-time password %s (login from %s).", m_Account.c_str(), m_Slot,
+            m_Otp == Otp::Auto ? "entered automatically" : m_Otp == Otp::Manual ? "asked for" : "off", UseKeyring() ? "the keyring" : "Credential Manager");
         return true;
     }
 
@@ -1446,6 +1509,9 @@ private:
     bool m_Dump = false;
     bool m_Trace = false;
     bool m_Show  = false;
+    bool m_OpenSetup = false; // Credential Manager only: open the setup window before logging in
+    bool m_WinCred   = false; // use Credential Manager even under Wine on Linux
+    platform::Info m_Platform;
     HWND m_HiddenHwnd      = nullptr;
     Splash m_Splash;
     DWORD m_Loaded         = 0;

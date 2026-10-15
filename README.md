@@ -7,8 +7,8 @@ inside pol.exe (no window focus, simulated keystrokes or clipboard, unlike autoP
 main menu so FFXI starts straight after the login. It does everything on its own and needs no other
 POL plugin or login tool.
 
-Your login lives in your desktop keyring (GNOME Keyring, KWallet, KeePassXC...), never in a plain text
-file. Square Enix one-time passwords (2FA) are supported: typed into the splash when asked, or
+Your login is never kept in a plain text file: on Linux it lives in your desktop keyring (GNOME
+Keyring, KWallet, KeePassXC...), on Windows in Windows Credential Manager. Square Enix one-time passwords (2FA) are supported: typed into the splash when asked, or
 generated automatically from your authenticator key if you choose.
 
 <p align="center">
@@ -19,14 +19,29 @@ generated automatically from your authenticator key if you choose.
 The splash is drawn with the game's own title logo, menu window and font, read at runtime from your
 FFXI install. No Square Enix data is included in this repository or the release.
 
-> **Linux only (Wine/Proton).** The keyring hand-off goes through `$XDG_RUNTIME_DIR`, which only
-> exists on Linux. Developed and tested with [Faugus Launcher](https://github.com/Faugus/faugus-launcher)
-> (Proton) on retail FFXI, North American client.
+> **Linux (Wine/Proton) and Windows.** The plugin checks what it is really running on at start-up
+> (several independent Wine traces, so Wine set to look like Windows doesn't fool it) and picks where
+> the login is kept: the desktop keyring under Wine/Proton on Linux, Windows Credential Manager on
+> Windows. Developed and tested with [Faugus Launcher](https://github.com/Faugus/faugus-launcher)
+> (Proton) on retail FFXI, North American client. **The Windows side has only been tested under Wine,
+> not on a real Windows install yet.**
 >
 > Not affiliated with or endorsed by Square Enix. Automating the PlayOnline login is a grey area under
 > the PlayOnline/FFXI terms of use; use it at your own risk.
 
-## Install
+## Install on Windows
+1. Have FFXI working through Ashita v4, and log in to PlayOnline by hand at least once so your
+   member(s) exist.
+2. Copy `BegonePOL.dll` (from the [latest release](../../releases/latest)) into `Ashita\polplugins\`.
+3. Turn it on in your Ashita boot ini, as in step 3 of the Linux install below (same warning: no
+   other POL plugins or login tools alongside it).
+4. Launch. The first time, a "BegonePOL setup" window asks for your Square Enix ID, password,
+   PlayOnline member row and one-time password settings and saves them to Windows Credential Manager
+   (under "Windows Credentials", as `BegonePOL/member<n>`); after that, launches go straight in.
+   To change the login later, set `BegonePOL = setup` under `[ashita.polplugins.args]` for one
+   launch. "Forget this login" in that window deletes it.
+
+## Install on Linux
 1. Have FFXI working through Ashita v4 in a Wine/Proton prefix, and log in to PlayOnline by hand at
    least once so your member(s) exist.
 2. Copy `BegonePOL.dll` (from the [latest release](../../releases/latest)) into `Ashita/polplugins/`.
@@ -91,7 +106,22 @@ Everything in app.dll is found at load time via RTTI vtables and byte signatures
 fails loudly ("signatures not found") instead of poking the wrong memory; POL then just behaves normally.
 
 ## Config
-- **Login: the desktop keyring**, kept by `begonepol-helper.py` (GTK 4/libadwaita, runs inside the Faugus
+- **Where the login is kept** depends on the system, detected at start-up (`src/platform.h`). Wine is
+  recognised by any one of: ntdll's `wine_get_version`/`__wine_dbg_output` exports, the
+  `Software\Wine` registry key wineboot writes into every prefix, a loaded Wine display driver, or
+  Wine's own system files (`winex11.drv`, `wineboot.exe`...). The host is then read from
+  `wine_get_host_version`, or from the host's own files through Wine's Z: drive when the exports are
+  hidden. Each sign was checked on its own under Proton. The log's first BegonePOL line says what
+  was found.
+  - Wine/Proton on Linux → desktop keyring (below).
+  - Windows, or Wine on another host (no helper there) → Windows Credential Manager (below).
+- **Login on Windows: Credential Manager** (`src/winlogin.h`). One generic credential per member
+  row, `BegonePOL/member<n>`, user name = Square Enix ID, secret `otp=`, `password=`, `totp=`
+  (encrypted by Windows for your user). It picks the row from `slot=<n>`, or the only saved login;
+  with none saved, several saved and no `slot=`, or the `setup` arg, the setup window opens first
+  (same fields and one-time password options as the Linux one, plus "Forget this login") and
+  PlayOnline waits for it. Closing it → POL comes up normally for a manual login.
+- **Login on Linux: the desktop keyring**, kept by `begonepol-helper.py` (GTK 4/libadwaita, runs inside the Faugus
   sandbox). Faugus runs it as the entry's pre-launch command:
   - Login saved → it writes `$XDG_RUNTIME_DIR/begonepol/login` (tmpfs, mode 600; `account=`, `slot=`,
     `otp=off|manual|auto`, `password=`, `totp=`) and deletes it after 2 minutes if nothing read it. The
@@ -128,7 +158,10 @@ fails loudly ("signatures not found") instead of poking the wrong memory; POL th
 - Boot ini `[ashita.polplugins]`: `BegonePOL = 1` and no other POL plugins (untested together; `quicky`
   would hook the network twice).
 - `[ashita.polplugins.args]`: `BegonePOL = [options]` (empty normally)
-  - `slot=<n>`: override the saved member row.
+  - `slot=<n>`: override the saved member row (on Windows: which saved login to use).
+  - `setup`: (Windows) open the setup window before logging in, to change or forget the login.
+  - `wincred`: use Credential Manager even under Wine on Linux (for testing the Windows path; Wine
+    keeps it in the prefix's registry, so it's weaker than the keyring).
   - `show`: don't hide the POL window. `nosplash`: no splash window.
   - `menu`: don't skip POL's main menu. `realconnect`: really connect to the content server instead of faking it.
   - `dryrun`: stop before pressing Login (nothing is sent to Square Enix). With it, `testmembers=<n>`
@@ -147,8 +180,11 @@ On Linux, with LLVM (clang-cl, lld-link) and the MSVC CRT/Windows SDK from
 ASHITA_DIR=~/Games/ffxi/drive_c/Ashita ./build-msvc.sh          # -> build-msvc/BegonePOL.dll
 ASHITA_DIR=~/Games/ffxi/drive_c/Ashita ./build-msvc.sh install  # also copies it into polplugins
 ```
-The Ashita SDK headers come from your Ashita install (`plugins/sdk`). `preview/build.sh` builds a small
-tool that renders the splash to BMP files without starting PlayOnline.
+The Ashita SDK headers come from your Ashita install (`plugins/sdk`). `preview/build.sh` builds
+`preview.exe`, which renders the splash to BMP files without starting PlayOnline, and `wintest.exe`,
+which tries the Windows parts on their own (platform detection, also with Wine signs hidden;
+Credential Manager save/list/forget with dummy logins; the setup window, also driven
+automatically).
 
 ## Timing (traced run)
 Faugus → Ashita 7s · POL start to login screen 5.5s · BegonePOL login steps ~1s ·
@@ -159,6 +195,10 @@ FFXI title + character select (Ashita `autologin` addon) 7.5s. ~36s total.
 - A real login with a one-time password has only been tested as a dry run (prompt and code entry up
   to the Login button); logins without one are tested end to end.
 - Only the North American retail client has been tested; signatures should fail safely elsewhere.
+- Windows support (platform detection, Credential Manager, setup window) has been tested under Wine and
+  Proton, including the plugin reading the login and the setup window during a real POL launch (dry
+  run), but not yet on a real Windows install. The rest of the plugin is plain Win32 code; some parts
+  work around Wine behaviour and should be harmless on Windows.
 
 ## License
 GPL-3.0-or-later (see `LICENSE`). Builds against the Ashita v4 SDK, which is GPL-3.0.
