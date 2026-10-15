@@ -26,7 +26,7 @@
  *   dryrun           do everything except press Login (for testing; nothing is sent to Square Enix)
  *   askcode          with dryrun: show the one-time password prompt even if the member doesn't use one
  *   menu             show PlayOnline's main menu instead of starting FFXI straight after the login
- *   realconnect      really connect to the content server when skipping the menu (like quicky)
+ *   realconnect      really connect to the content server when skipping the menu
  *   skiplogo         experimental: don't hold the PlayOnline logo for 5s (FFXI then failed to start
  *                    with "unknown error 0x80004002"; something else needs those seconds)
  *   prof             log where PlayOnline sleeps, per call site (for finding waits to skip)

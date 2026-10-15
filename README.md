@@ -24,7 +24,7 @@ FFXI install. No Square Enix data is included in this repository or the release.
 > (Proton) on retail FFXI, North American client.
 >
 > Not affiliated with or endorsed by Square Enix. Automating the PlayOnline login is a grey area under
-> the PlayOnline/FFXI terms of use, as with autoPOL and quicky; use it at your own risk.
+> the PlayOnline/FFXI terms of use; use it at your own risk.
 
 ## Install
 1. Have FFXI working through Ashita v4 in a Wine/Proton prefix, and log in to PlayOnline by hand at
@@ -71,13 +71,12 @@ If anything fails, PlayOnline is shown again so you can log in yourself. Ashita'
    member list → select row `slot` through the list's selection model; member screen
    (Log In / Settings / Delete / Back) → Log In (or Back if the wrong member is open);
    Square Enix ID screen → set the password (and one-time password) fields and press Login. Submitted once, never retried.
-3. **Skip the POL menu** (quicky's idea, own code in `src/quicklaunch.h`). After the login POL fetches
+3. **Skip the POL menu** (`src/quicklaunch.h`). After the login POL fetches
    `GET /pml/main/index.pml` from the content server on port 51304. Inline hooks on ws2_32
    `connect/send/recv/select/__WSAFDIsSet/closesocket` fake that connection and answer with a PML page
-   whose `onopen` is `gameto:1` (start FFXI). Differences from quicky: the connection is never actually
-   made (connect reports "in progress", select reports ready on the first call instead of the third),
-   and the two fade loops in app.dll's hand-off (30 + 12 frames x 16 ms) are found by signature
-   rather than fixed offsets.
+   whose `onopen` is `gameto:1` (start FFXI). The connection is never actually made (connect reports
+   "in progress", select reports ready on the first call), and the two fade loops in app.dll's
+   hand-off (30 + 12 frames x 16 ms), found by signature, are skipped.
 4. **Skip the logo wait** (on by default; arg `logowait` turns it off). pol.exe keeps its PlayOnline logo
    dialog (the untitled #32770 box BegonePOL hides) up for at least 5 seconds (pol.exe FUN_00406a10:
    `cmp eax, 5000` in a 100ms Sleep loop) before showing the main window. Both compares are patched to 0,
@@ -131,7 +130,7 @@ fails loudly ("signatures not found") instead of poking the wrong memory; POL th
 - `[ashita.polplugins.args]`: `BegonePOL = [options]` (empty normally)
   - `slot=<n>`: override the saved member row.
   - `show`: don't hide the POL window. `nosplash`: no splash window.
-  - `menu`: don't skip POL's main menu. `realconnect`: connect to the content server like quicky does.
+  - `menu`: don't skip POL's main menu. `realconnect`: really connect to the content server instead of faking it.
   - `dryrun`: stop before pressing Login (nothing is sent to Square Enix). With it, `testmembers=<n>`
     pretends POL has n members, and an OTP mode runs even if the member doesn't use one.
     `askcode` (with `dryrun`) shows the one-time password prompt even when the login doesn't use one.

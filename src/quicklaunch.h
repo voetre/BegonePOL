@@ -1,16 +1,15 @@
 /**
  * Quick launch: skip PlayOnline's main menu and go straight into FINAL FANTASY XI after the login.
  *
- * Same idea as Ashita's quicky plugin (written from scratch here, no quicky code):
+ * How:
  *  - After the Square Enix login, PlayOnline fetches its main menu page (PML, PlayOnline's HTML) from
  *    the content server on port 51304. Connections to that port are tracked, nothing is sent on them,
  *    and the reply is a one-line page whose onopen handler is "gameto:1", i.e. start FINAL FANTASY XI.
  *  - select / __WSAFDIsSet report those sockets ready straight away, so PlayOnline never waits on them.
  *  - Two short fade loops in app.dll's hand-off to the game (30 and 12 frames of 16 ms) are skipped.
  *
- * Beyond quicky: the content-server connect is never made (PlayOnline just sees a connect that is "in
- * progress" and then ready), which saves a round trip to Japan, and the sockets read as ready on the first
- * select instead of the third.
+ * The content-server connect is never made (PlayOnline just sees a connect that is "in progress" and
+ * then ready), which saves a round trip to Japan, and the sockets read as ready on the first select.
  *
  * Included into begonepol.cpp's anonymous namespace (uses g_Log, Find).
  */
@@ -35,7 +34,7 @@ namespace quick
     SRWLOCK g_Lock = SRWLOCK_INIT;
     bool g_Trace   = false;
     volatile bool g_MenuSkipped = false; // the content request was answered; FFXI is being started
-    bool g_Connect = false; // really connect to the content server (like quicky) instead of faking it
+    bool g_Connect = false; // really connect to the content server instead of faking it
     DWORD g_Since  = 0;
     volatile long g_IoLogs = 0;
     bool g_LogoSkipped = false;      // the logo wait was skipped this run
